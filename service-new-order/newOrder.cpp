@@ -19,14 +19,15 @@ int main(int argc, char **argv) {
     kafkaDispatcher<Order> orderDispatcher(confPath, "ECOMMERCE_NEW_ORDER"); 
     //kafkaDispatcher emailDispatcher(confPath, "ECOMMERCE_SEND_EMAIL"); 
 
+    std::string fixedEmail = "juan@email.com.br";
     for (int i = 0; i < 10; i++) {
         std::string userId = std::to_string(rand());
         std::string orderId = std::to_string(rand());
         amount += 3.5;
 
-        Order order(userId, orderId, amount);
+        Order order(userId, orderId, amount, fixedEmail);
         orderDispatcher.send(userId, order);
     }
 
-    printf("To ok");
+    printf("\nFIM\n");
 }

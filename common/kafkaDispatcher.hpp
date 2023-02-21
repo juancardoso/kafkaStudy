@@ -27,7 +27,7 @@ class kafkaDispatcher
 
       char errstr[512];
       
-      if (!(this->conf = read_config(confPath.c_str())))
+      if (!(conf = read_config(confPath.c_str())))
             throw std::runtime_error("Failed to read or processing conf file");
 
       /* Set up a delivery report callback that will be triggered
@@ -37,10 +37,10 @@ class kafkaDispatcher
 
       /* Create producer.
       * A successful call assumes ownership of \p conf. */
-      this->producer = rd_kafka_new(RD_KAFKA_PRODUCER, this->conf, errstr, sizeof(errstr));
+      this->producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
       if (!this->producer) {
         fprintf(stderr, "Failed to create producer: %s\n", errstr);
-        rd_kafka_conf_destroy(this->conf);
+        rd_kafka_conf_destroy(conf);
         throw std::runtime_error(errstr);
       }
 
@@ -52,29 +52,31 @@ class kafkaDispatcher
     }
 
     ~kafkaDispatcher() {
-      rd_kafka_destroy(producer);
-      rd_kafka_conf_destroy(conf);
+      if(producer != nullptr) rd_kafka_destroy(producer);
+      // For some reason, free conf memory is returning: 
+      // "munmap_chunk(): invalid pointer"
+      //if(conf != nullptr) rd_kafka_conf_destroy(conf);
     }
 
-    static void delivery_callback (rd_kafka_t *rk, const rd_kafka_message_t *rkmessage, void *opaque) {
-  int *delivery_counterp = (int *)rkmessage->_private; /* V_OPAQUE */
+  static void delivery_callback (rd_kafka_t *rk, const rd_kafka_message_t *rkmessage, void *opaque) {
+    int *delivery_counterp = (int *)rkmessage->_private; /* V_OPAQUE */
 
-  if (rkmessage->err) {
-    fprintf(stderr, "Delivery failed for message %.*s: %s\n",
-            (int)rkmessage->len, (const char *)rkmessage->payload,
-            rd_kafka_err2str(rkmessage->err));
-  } else {
-    fprintf(stderr,
-            "Sucesso enviando [%s] :::partition[%d] at offset [%" PRId64
-            "] in %.2fms: %.*s\n",
-            rd_kafka_topic_name(rkmessage->rkt),
-            (int)rkmessage->partition,
-            rkmessage->offset,
-            (float)rd_kafka_message_latency(rkmessage) / 1000.0,
-            (int)rkmessage->len, (const char *)rkmessage->payload);    
-    (*delivery_counterp)++;
+    if (rkmessage->err) {
+      fprintf(stderr, "Delivery failed for message %.*s: %s\n",
+              (int)rkmessage->len, (const char *)rkmessage->payload,
+              rd_kafka_err2str(rkmessage->err));
+    } else {
+      fprintf(stderr,
+              "Sucesso enviando [%s] :::partition[%d] at offset [%" PRId64
+              "] in %.2fms: %.*s\n",
+              rd_kafka_topic_name(rkmessage->rkt),
+              (int)rkmessage->partition,
+              rkmessage->offset,
+              (float)rd_kafka_message_latency(rkmessage) / 1000.0,
+              (int)rkmessage->len, (const char *)rkmessage->payload);  
+      (*delivery_counterp)++;
+    }
   }
-}
     
     void send(std::string key, T value) {
       rd_kafka_resp_err_t err;
@@ -101,7 +103,7 @@ class kafkaDispatcher
 
       /* Poll for delivery report callbacks to know the final
         * delivery status of previously produced messages. */
-      rd_kafka_poll(this->producer, 5);
+      rd_kafka_poll(this->producer, 1000);
 
       this->delivery_counter++;
     }
